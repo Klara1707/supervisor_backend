@@ -1,0 +1,5 @@
+
+[
+    { "id": 1, "name": "Example item", "status": "active" },
+    { "id": 2, "name": "Second item", "status": "pending" }
+]
