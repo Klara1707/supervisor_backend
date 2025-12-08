@@ -1,9 +1,178 @@
+from django.contrib.auth import get_user_model
 
-from rest_framework import viewsets, permissions
-from .models import User
-from .serializers import UserSerializer
+from rest_framework import viewsets, permissions, serializers, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+
+from .serializers import UserSerializer, UserTrainingProgressSerializer
+# ---- Admin JWT Login: only superusers ----
+# ...existing code...
+
+# ---- User Training Progress API ----
+from .models import UserTrainingProgress
+
+
+class TrainingProgressView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            progress = UserTrainingProgress.objects.get(user=request.user)
+            serializer = UserTrainingProgressSerializer(progress)
+            return Response(serializer.data)
+        except UserTrainingProgress.DoesNotExist:
+            return Response(
+                {"detail": "No progress found for user."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    def post(self, request):
+        popup_id = request.data.get("popup_id")
+        checked_items = request.data.get("checked_items", [])
+        if not popup_id:
+            return Response(
+                {"detail": "popup_id is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        progress, created = UserTrainingProgress.objects.get_or_create(
+            user=request.user
+        )
+        progress_data = progress.progress_by_popup or {}
+        progress_data[popup_id] = checked_items
+        progress.progress_by_popup = progress_data
+        progress.save()
+        serializer = UserTrainingProgressSerializer(progress)
+        return Response(serializer.data)
+
+
+User = get_user_model()
+
+
+# ---- Users CRUD (protected) ----
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "username"
+
+
+# ---- JWT Login: include user info in response ----
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        # Check username before authenticating
+        username = attrs.get("username")
+        if (
+            username
+            and not User.objects.filter(username=username, is_staff=True).exists()
+        ):
+            raise serializers.ValidationError("Login only allowed for admin usernames.")
+        data = super().validate(attrs)
+        data["user"] = {
+            "id": self.user.id,
+            "username": self.user.username,
+            "email": self.user.email,
+            "is_staff": self.user.is_staff,
+            "is_superuser": self.user.is_superuser,
+        }
+        return data
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+# ---- Admin JWT Login: only superusers ----
+class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        if not self.user.is_superuser:
+            raise serializers.ValidationError(
+                "Login only allowed for admin (superuser) accounts."
+            )
+        data["user"] = {
+            "id": self.user.id,
+            "username": self.user.username,
+            "email": self.user.email,
+            "first_name": self.user.first_name,
+            "last_name": self.user.last_name,
+            "is_staff": self.user.is_staff,
+            "is_superuser": self.user.is_superuser,
+        }
+        return data
+
+
+class AdminTokenObtainPairView(TokenObtainPairView):
+    serializer_class = AdminTokenObtainPairSerializer
+
+
+# ---- Registration ----
+class RegisterSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=100)
+    email = serializers.EmailField()
+    first_name = serializers.CharField(max_length=50)
+    last_name = serializers.CharField(max_length=50)
+    password = serializers.CharField(write_only=True)
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already taken.")
+        return value
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered.")
+        if not value.lower().endswith("@riotinto.com"):
+            raise serializers.ValidationError(
+                "Registration only allowed for riotinto.com email addresses."
+            )
+        return value
+
+    def validate_password(self, value):
+        # Ensure only numbers + minimum length of 5 digits
+        if not value.isdigit():
+            raise serializers.ValidationError("Password must contain only numbers.")
+        if len(value) < 5:
+            raise serializers.ValidationError("Password must have at least 5 digits.")
+        return value
+
+    def create(self, validated_data):
+        return User.objects.create_user(
+            username=validated_data["username"],
+            email=validated_data["email"],
+            password=validated_data["password"],
+            first_name=validated_data["first_name"],
+            last_name=validated_data["last_name"],
+        )
+
+
+# ---- Registration View ----
+class RegisterView(APIView):
+    authentication_classes = []  # Allow unauthenticated registration
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ---- Current user profile ----
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me_view(request):
+    user = request.user
+    return Response({"id": user.id, "username": user.username, "email": user.email})
