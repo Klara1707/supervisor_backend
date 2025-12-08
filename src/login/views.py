@@ -34,15 +34,23 @@ class TrainingProgressView(APIView):
     def post(self, request):
         popup_id = request.data.get("popup_id")
         checked_items = request.data.get("checked_items", [])
+        site = request.data.get("site")
         if not popup_id:
             return Response(
                 {"detail": "popup_id is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if not site:
+            return Response(
+                {"detail": "site is required."}, status=status.HTTP_400_BAD_REQUEST
             )
         progress, created = UserTrainingProgress.objects.get_or_create(
             user=request.user
         )
         progress_data = progress.progress_by_popup or {}
-        progress_data[popup_id] = checked_items
+        # Store progress under site and popup_id
+        if site not in progress_data:
+            progress_data[site] = {}
+        progress_data[site][popup_id] = checked_items
         progress.progress_by_popup = progress_data
         progress.save()
         serializer = UserTrainingProgressSerializer(progress)
@@ -75,6 +83,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             "id": self.user.id,
             "username": self.user.username,
             "email": self.user.email,
+            "first_name": self.user.first_name,
             "is_staff": self.user.is_staff,
             "is_superuser": self.user.is_superuser,
         }
@@ -84,7 +93,25 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
+class DeleteUserView(APIView):
+    permission_classes = [permissions.IsAdminUser]
 
+    def post(self, request):
+        username = request.data.get("username")
+        if not username:
+            return Response(
+                {"detail": "username is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            user = User.objects.get(username=username)
+            user.delete()
+            return Response(
+                {"detail": f"User '{username}' deleted."}, status=status.HTTP_200_OK
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND
+            )
 # ---- Admin JWT Login: only superusers ----
 class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):

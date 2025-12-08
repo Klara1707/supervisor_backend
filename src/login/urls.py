@@ -8,6 +8,7 @@ from .views import (
     CustomTokenObtainPairView,
     AdminTokenObtainPairView,
     TrainingProgressView,
+    DeleteUserView,
 )
 
 
@@ -60,4 +61,5 @@ urlpatterns = [
     path(
         "training-progress/", TrainingProgressView.as_view(), name="training_progress"
     ),
+    path("delete-user/", DeleteUserView.as_view(), name="delete_user"),
 ]
