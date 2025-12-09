@@ -88,6 +88,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if site:
             user.site = site
             user.save(update_fields=["site"])
+            print(f"DEBUG: Saved site for user {user.username}: {user.site}")
         self.user = user
         data = super().validate(attrs)
         data["user"] = {
