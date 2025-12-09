@@ -6,6 +6,7 @@ from .views import (
     RegisterView,
     me_view,
     CustomTokenObtainPairView,
+    UsersBySiteView,
     AdminTokenObtainPairView,
     TrainingProgressView,
     DeleteUserView,
@@ -52,6 +53,7 @@ urlpatterns = [
     path("token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("register/", RegisterView.as_view(), name="register"),
+    path("users-by-site/", UsersBySiteView.as_view(), name="users_by_site"),
     path("me/", me_view, name="me"),
     path(
         "admin-token/",

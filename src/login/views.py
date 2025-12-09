@@ -71,30 +71,57 @@ class UserViewSet(viewsets.ModelViewSet):
 # ---- JWT Login: include user info in response ----
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        # Authenticate using email and password for normal users
-        email = attrs.get("email")
+        username = attrs.get("username")
         password = attrs.get("password")
-        if not email or not password:
-            raise serializers.ValidationError("Email and password are required.")
+        site = attrs.get("site")
+        if not username or not password:
+            raise serializers.ValidationError("Username and password are required.")
+        if not username.lower().endswith("@riotinto.com"):
+            raise serializers.ValidationError("Username must end with @riotinto.com")
         try:
-            user = User.objects.get(email=email)
+            user = User.objects.get(username=username)
         except User.DoesNotExist:
-            raise serializers.ValidationError("No user found with this email.")
+            raise serializers.ValidationError("No user found with this username.")
         if not user.check_password(password):
-            raise serializers.ValidationError("Incorrect password.")
-        if not email.lower().endswith("@riotinto.com"):
-            raise serializers.ValidationError(
-                "Login only allowed for riotinto.com email addresses."
-            )
+            raise serializers.ValidationError("Incorrect credentials.")
+        # Save the selected site if provided
+        if site:
+            user.site = site
+            user.save(update_fields=["site"])
+        self.user = user
         data = super().validate(attrs)
         data["user"] = {
             "id": self.user.id,
-            "email": self.user.email,
+            "username": self.user.username,
             "first_name": self.user.first_name,
             "is_staff": self.user.is_staff,
             "is_superuser": self.user.is_superuser,
+            "site": self.user.site,
         }
         return data
+
+
+class UsersBySiteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Only include normal users (not admin/superuser)
+        users = User.objects.filter(is_superuser=False, is_staff=False)
+        result = {}
+        for user in users:
+            site = user.site or "Unassigned"
+            if site not in result:
+                result[site] = []
+            result[site].append(
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                }
+            )
+        return Response(result)
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -154,32 +181,25 @@ class AdminTokenObtainPairView(TokenObtainPairView):
 
 # ---- Registration ----
 class RegisterSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    username = serializers.CharField(max_length=100)
     first_name = serializers.CharField(max_length=50)
     last_name = serializers.CharField(max_length=50)
     password = serializers.CharField(write_only=True)
 
-    def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email already registered.")
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already registered.")
         if not value.lower().endswith("@riotinto.com"):
-            raise serializers.ValidationError(
-                "Registration only allowed for riotinto.com email addresses."
-            )
+            raise serializers.ValidationError("Username must end with @riotinto.com")
         return value
 
     def validate_password(self, value):
-        # Ensure only numbers + minimum length of 5 digits
-        if not value.isdigit():
-            raise serializers.ValidationError("Password must contain only numbers.")
-        if len(value) < 5:
-            raise serializers.ValidationError("Password must have at least 5 digits.")
+        # Allow any password (no digit-only or length restriction)
         return value
 
     def create(self, validated_data):
-        # Create user without username
         return User.objects.create_user(
-            email=validated_data["email"],
+            username=validated_data["username"],
             password=validated_data["password"],
             first_name=validated_data["first_name"],
             last_name=validated_data["last_name"],
@@ -201,7 +221,7 @@ class RegisterView(APIView):
         return Response(
             {
                 "id": user.id,
-                "email": user.email,
+                "username": user.username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
             },

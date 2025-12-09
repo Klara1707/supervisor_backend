@@ -1,6 +1,7 @@
 # src/login/serializers.py
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from .models import UserTrainingProgress
 
 User = get_user_model()
 
@@ -8,11 +9,7 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "username", "email"]
-
-
-# Serializer for UserTrainingProgress
-from .models import UserTrainingProgress
+        fields = ["id", "username", "site"]
 
 
 class UserTrainingProgressSerializer(serializers.ModelSerializer):
