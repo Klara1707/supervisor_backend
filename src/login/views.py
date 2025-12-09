@@ -71,17 +71,24 @@ class UserViewSet(viewsets.ModelViewSet):
 # ---- JWT Login: include user info in response ----
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        # Check username before authenticating
-        username = attrs.get("username")
-        if (
-            username
-            and not User.objects.filter(username=username, is_staff=True).exists()
-        ):
-            raise serializers.ValidationError("Login only allowed for admin usernames.")
+        # Authenticate using email and password for normal users
+        email = attrs.get("email")
+        password = attrs.get("password")
+        if not email or not password:
+            raise serializers.ValidationError("Email and password are required.")
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("No user found with this email.")
+        if not user.check_password(password):
+            raise serializers.ValidationError("Incorrect password.")
+        if not email.lower().endswith("@riotinto.com"):
+            raise serializers.ValidationError(
+                "Login only allowed for riotinto.com email addresses."
+            )
         data = super().validate(attrs)
         data["user"] = {
             "id": self.user.id,
-            "username": self.user.username,
             "email": self.user.email,
             "first_name": self.user.first_name,
             "is_staff": self.user.is_staff,
@@ -92,6 +99,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        print(
+            "Login request data:", request.data
+        )  # This prints to your backend terminal
+        return super().post(request, *args, **kwargs)
+
 
 class DeleteUserView(APIView):
     permission_classes = [permissions.IsAdminUser]
@@ -112,6 +126,8 @@ class DeleteUserView(APIView):
             return Response(
                 {"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND
             )
+
+
 # ---- Admin JWT Login: only superusers ----
 class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -138,16 +154,10 @@ class AdminTokenObtainPairView(TokenObtainPairView):
 
 # ---- Registration ----
 class RegisterSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=100)
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=50)
     last_name = serializers.CharField(max_length=50)
     password = serializers.CharField(write_only=True)
-
-    def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Username already taken.")
-        return value
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -167,8 +177,8 @@ class RegisterSerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
+        # Create user without username
         return User.objects.create_user(
-            username=validated_data["username"],
             email=validated_data["email"],
             password=validated_data["password"],
             first_name=validated_data["first_name"],
@@ -182,13 +192,15 @@ class RegisterView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        print("Received registration data:", request.data)  # Debug log
         serializer = RegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            print("Serializer errors:", serializer.errors)  # Print validation errors
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         user = serializer.save()
         return Response(
             {
                 "id": user.id,
-                "username": user.username,
                 "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
