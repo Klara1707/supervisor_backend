@@ -17,11 +17,16 @@ class UserTrainingProgress(models.Model):
 
 
 class UserManager(BaseUserManager):
-    def create_user(self, username, email, password=None, **extra_fields):
+    def create_user(self, email, password=None, username=None, **extra_fields):
         if not email:
             raise ValueError("Email is required")
         email = self.normalize_email(email)
-        user = self.model(username=username, email=email, **extra_fields)
+        if username is None:
+            # For normal users, username is optional and can be blank
+            user = self.model(email=email, **extra_fields)
+        else:
+            # For admin/superusers, username is required
+            user = self.model(username=username, email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -37,11 +42,13 @@ class UserManager(BaseUserManager):
         if extra_fields.get("is_superuser") is not True:
             raise ValueError("Superusers must have is_superuser=True.")
 
-        return self.create_user(username, email, password, **extra_fields)
+        return self.create_user(
+            email=email, password=password, username=username, **extra_fields
+        )
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    username = models.CharField(max_length=100, unique=True)
+    username = models.CharField(max_length=100, unique=True, blank=True, null=True)
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
@@ -50,8 +57,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
 
-    USERNAME_FIELD = "username"
-    REQUIRED_FIELDS = ["email"]
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = []
 
     def __str__(self):
-        return self.username
+        return self.email
