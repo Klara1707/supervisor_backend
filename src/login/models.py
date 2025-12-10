@@ -46,7 +46,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=False, blank=True, null=True)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
-    site = models.CharField(max_length=100, blank=True, null=True)  # New field for site
+    SITE_CHOICES = [
+        ("robevalley", "Robe Valley"),
+        ("greaterhopedowns", "Greater Hope Downs"),
+        ("restofeast", "Rest of East"),
+        ("restofwest", "Rest of West"),
+    ]
+    site = models.CharField(
+        max_length=100, choices=SITE_CHOICES, blank=True, null=True
+    )  # New field for site
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 

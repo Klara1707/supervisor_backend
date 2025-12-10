@@ -89,12 +89,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             user.site = site
             user.save(update_fields=["site"])
             print(f"DEBUG: Saved site for user {user.username}: {user.site}")
+        print(f"DEBUG: Logging in user {user.username}, first_name: {user.first_name}")
         self.user = user
         data = super().validate(attrs)
         data["user"] = {
             "id": self.user.id,
             "username": self.user.username,
-            "first_name": self.user.first_name,
+            "first_name": self.user.first_name or "",
             "is_staff": self.user.is_staff,
             "is_superuser": self.user.is_superuser,
             "site": self.user.site,
@@ -158,6 +159,25 @@ class DeleteUserView(APIView):
             )
 
 
+# ---- Update Site API ----
+class UpdateSiteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        site = request.data.get("site")
+        if not site:
+            return Response(
+                {"detail": "site is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        user = request.user
+        user.site = site
+        user.save(update_fields=["site"])
+        return Response(
+            {"detail": f"Site updated to {site}", "site": user.site},
+            status=status.HTTP_200_OK,
+        )
+
+
 # ---- Admin JWT Login: only superusers ----
 class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -188,6 +208,7 @@ class RegisterSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=50)
     last_name = serializers.CharField(max_length=50)
     password = serializers.CharField(write_only=True)
+    site = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():
@@ -201,11 +222,13 @@ class RegisterSerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
+        site = validated_data.get("site", None)
         return User.objects.create_user(
             username=validated_data["username"],
             password=validated_data["password"],
             first_name=validated_data["first_name"],
             last_name=validated_data["last_name"],
+            site=site,
         )
 
 
@@ -227,6 +250,7 @@ class RegisterView(APIView):
                 "username": user.username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
+                "site": user.site,
             },
             status=status.HTTP_201_CREATED,
         )

@@ -5,6 +5,7 @@ from .views import (
     UserViewSet,
     RegisterView,
     me_view,
+    UpdateSiteView,
     CustomTokenObtainPairView,
     UsersBySiteView,
     AdminTokenObtainPairView,
@@ -64,4 +65,5 @@ urlpatterns = [
         "training-progress/", TrainingProgressView.as_view(), name="training_progress"
     ),
     path("delete-user/", DeleteUserView.as_view(), name="delete_user"),
+    path("update-site/", UpdateSiteView.as_view(), name="update_site"),
 ]
