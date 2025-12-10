@@ -113,6 +113,7 @@ class UsersBySiteView(APIView):
             site = user.site or "Unassigned"
             if site not in result:
                 result[site] = []
+            full_name = f"{user.first_name} {user.last_name}".strip()
             result[site].append(
                 {
                     "id": user.id,
@@ -120,6 +121,7 @@ class UsersBySiteView(APIView):
                     "email": user.email,
                     "first_name": user.first_name,
                     "last_name": user.last_name,
+                    "full_name": full_name,
                 }
             )
         return Response(result)
