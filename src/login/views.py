@@ -1,8 +1,14 @@
+# ---- Password Reset API ----
+from django.contrib.auth.forms import PasswordResetForm
+from django.core.mail import send_mail
+from django.conf import settings
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 from django.contrib.auth import get_user_model
 
 from rest_framework import viewsets, permissions, serializers, status
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
@@ -15,6 +21,43 @@ from .serializers import UserSerializer, UserTrainingProgressSerializer
 
 # ---- User Training Progress API ----
 from .models import UserTrainingProgress
+
+
+class PasswordResetView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        # Accept either 'email' or 'username' (which is always the email address)
+        email = request.data.get("email") or request.data.get("username")
+        if not email:
+            return Response(
+                {"detail": "Email or username is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        email = email.strip().lower()
+        User = get_user_model()
+        if not User.objects.filter(username__iexact=email).exists():
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        form = PasswordResetForm({"email": email})
+        if form.is_valid():
+            form.save(
+                request=request,
+                use_https=request.is_secure(),
+                email_template_name="registration/password_reset_email.html",
+                subject_template_name="registration/password_reset_subject.txt",
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            )
+            return Response(
+                {"detail": "Password reset email sent."},
+                status=status.HTTP_200_OK,
+            )
+        return Response(
+            {"detail": "Invalid email address or username."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class TrainingProgressView(APIView):
@@ -88,8 +131,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if site:
             user.site = site
             user.save(update_fields=["site"])
-            print(f"DEBUG: Saved site for user {user.username}: {user.site}")
-        print(f"DEBUG: Logging in user {user.username}, first_name: {user.first_name}")
         self.user = user
         data = super().validate(attrs)
         data["user"] = {
@@ -132,9 +173,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        print(
-            "Login request data:", request.data
-        )  # This prints to your backend terminal
         return super().post(request, *args, **kwargs)
 
 
@@ -147,8 +185,9 @@ class DeleteUserView(APIView):
             return Response(
                 {"detail": "username is required."}, status=status.HTTP_400_BAD_REQUEST
             )
+        username = username.strip().lower()
         try:
-            user = User.objects.get(username=username)
+            user = User.objects.get(username__iexact=username)
             user.delete()
             return Response(
                 {"detail": f"User '{username}' deleted."}, status=status.HTTP_200_OK
@@ -238,10 +277,8 @@ class RegisterView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        print("Received registration data:", request.data)  # Debug log
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
-            print("Serializer errors:", serializer.errors)  # Print validation errors
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         user = serializer.save()
         return Response(

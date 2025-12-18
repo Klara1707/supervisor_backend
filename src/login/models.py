@@ -43,7 +43,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=100, unique=True)
-    email = models.EmailField(unique=False, blank=True, null=True)
+    # Removed email field; use username as email
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     SITE_CHOICES = [

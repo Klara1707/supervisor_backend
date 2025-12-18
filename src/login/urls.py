@@ -11,6 +11,7 @@ from .views import (
     AdminTokenObtainPairView,
     TrainingProgressView,
     DeleteUserView,
+    PasswordResetView,
 )
 
 
@@ -66,4 +67,5 @@ urlpatterns = [
     ),
     path("delete-user/", DeleteUserView.as_view(), name="delete_user"),
     path("update-site/", UpdateSiteView.as_view(), name="update_site"),
+    path("password_reset/", PasswordResetView.as_view(), name="password_reset"),
 ]
