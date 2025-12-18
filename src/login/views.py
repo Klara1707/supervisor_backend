@@ -160,7 +160,6 @@ class UsersBySiteView(APIView):
                 {
                     "id": user.id,
                     "username": user.username,
-                    "email": user.email,
                     "first_name": user.first_name,
                     "last_name": user.last_name,
                     "full_name": full_name,
@@ -189,9 +188,7 @@ class DeleteUserView(APIView):
         try:
             user = User.objects.get(username__iexact=username)
             user.delete()
-            return Response(
-                {"detail": f"User '{username}' deleted."}, status=status.HTTP_200_OK
-            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
         except User.DoesNotExist:
             return Response(
                 {"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND
@@ -228,7 +225,6 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
         data["user"] = {
             "id": self.user.id,
             "username": self.user.username,
-            "email": self.user.email,
             "first_name": self.user.first_name,
             "last_name": self.user.last_name,
             "is_staff": self.user.is_staff,

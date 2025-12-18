@@ -9,9 +9,10 @@ class UserAdmin(admin.ModelAdmin):
         "username",
         "first_name",
         "last_name",
+        "site",  # Show site in admin list
         "is_active",
         "is_staff",
     )
-    search_fields = ("username", "email")
-    list_filter = ("is_active", "is_staff")
+    search_fields = ("username",)
+    list_filter = ("site", "is_active", "is_staff")  # Filter by site
     actions = ["delete_selected"]
