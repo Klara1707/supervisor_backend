@@ -1,6 +1,7 @@
 # ---- Password Reset API ----
 from django.contrib.auth.forms import PasswordResetForm
-from django.core.mail import send_mail
+
+# send_mail import removed (unused)
 from django.conf import settings
 
 from rest_framework.views import APIView
@@ -8,14 +9,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import get_user_model
 
-from rest_framework import viewsets, permissions, serializers, status
+from rest_framework import viewsets, permissions, serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .serializers import UserSerializer, UserTrainingProgressSerializer
+from .serializers import UserSerializer
 # ---- Admin JWT Login: only superusers ----
 # ...existing code...
 
@@ -36,12 +37,27 @@ class PasswordResetView(APIView):
             )
         email = email.strip().lower()
         User = get_user_model()
-        if not User.objects.filter(username__iexact=email).exists():
+        user_exists = User.objects.filter(username__iexact=email).exists()
+        form = PasswordResetForm({"email": email})
+        # Monkey-patch form to use username as email
+        form.get_users = lambda email: User.objects.filter(
+            username__iexact=email, is_active=True
+        )
+        if not user_exists:
             return Response(
                 {"detail": "User not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        form = PasswordResetForm({"email": email})
+        # Monkey-patch form to use username as the email field for sending
+        orig_save = form.save
+
+        def custom_save(*args, **kwargs):
+            # Patch: set user.email to user.username for email sending
+            for user in form.get_users(email):
+                user.email = user.username
+            return orig_save(*args, **kwargs)
+
+        form.save = custom_save
         if form.is_valid():
             form.save(
                 request=request,
@@ -66,8 +82,19 @@ class TrainingProgressView(APIView):
     def get(self, request):
         try:
             progress = UserTrainingProgress.objects.get(user=request.user)
-            serializer = UserTrainingProgressSerializer(progress)
-            return Response(serializer.data)
+            # Flatten progress_by_popup to not use site
+            flat_progress = progress.progress_by_popup or {}
+            # If old data exists with site keys, flatten it
+            if any(isinstance(v, dict) for v in flat_progress.values()):
+                new_progress = {}
+                for site_data in flat_progress.values():
+                    if isinstance(site_data, dict):
+                        for popup_id, checked in site_data.items():
+                            new_progress[popup_id] = checked
+                flat_progress = new_progress
+                progress.progress_by_popup = flat_progress
+                progress.save()
+            return Response({"progress_by_popup": flat_progress})
         except UserTrainingProgress.DoesNotExist:
             return Response(
                 {"detail": "No progress found for user."},
@@ -77,27 +104,18 @@ class TrainingProgressView(APIView):
     def post(self, request):
         popup_id = request.data.get("popup_id")
         checked_items = request.data.get("checked_items", [])
-        site = request.data.get("site")
         if not popup_id:
             return Response(
                 {"detail": "popup_id is required."}, status=status.HTTP_400_BAD_REQUEST
-            )
-        if not site:
-            return Response(
-                {"detail": "site is required."}, status=status.HTTP_400_BAD_REQUEST
             )
         progress, created = UserTrainingProgress.objects.get_or_create(
             user=request.user
         )
         progress_data = progress.progress_by_popup or {}
-        # Store progress under site and popup_id
-        if site not in progress_data:
-            progress_data[site] = {}
-        progress_data[site][popup_id] = checked_items
+        progress_data[popup_id] = checked_items
         progress.progress_by_popup = progress_data
         progress.save()
-        serializer = UserTrainingProgressSerializer(progress)
-        return Response(serializer.data)
+        return Response({"progress_by_popup": progress_data})
 
 
 User = get_user_model()
@@ -113,24 +131,50 @@ class UserViewSet(viewsets.ModelViewSet):
 
 # ---- JWT Login: include user info in response ----
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    site = serializers.CharField(required=False, allow_blank=True)
+
     def validate(self, attrs):
+        import logging
+
+        logger = logging.getLogger("login")
         username = attrs.get("username")
         password = attrs.get("password")
         site = attrs.get("site")
-        if not username or not password:
-            raise serializers.ValidationError("Username and password are required.")
-        if not username.lower().endswith("@riotinto.com"):
-            raise serializers.ValidationError("Username must end with @riotinto.com")
+        # Log the raw request body for debugging
         try:
-            user = User.objects.get(username=username)
+            raw_body = self.context["request"].body
+            logger.info(f"[DEBUG] Raw request body: {raw_body}")
+        except Exception as e:
+            logger.warning(f"[DEBUG] Could not log raw request body: {e}")
+        logger.info(f"[DEBUG] attrs received in validate: {attrs}")
+        logger.info(f"[DEBUG] Raw site value from request: {site}")
+        if site:
+            site = site.lower()
+        logger.info(f"Login attempt for user: {username}, site: {site}")
+        if not username or not password:
+            logger.warning("Username and password are required.")
+            raise serializers.ValidationError("Username and password are required.")
+        try:
+            user = User.objects.get(username__iexact=username)
         except User.DoesNotExist:
+            logger.warning(f"No user found with username: {username}")
             raise serializers.ValidationError("No user found with this username.")
         if not user.check_password(password):
+            logger.warning(f"Incorrect credentials for user: {username}")
             raise serializers.ValidationError("Incorrect credentials.")
         # Save the selected site if provided
+        logger.info(
+            f"[DEBUG] User object before update: username={user.username}, site={user.site}"
+        )
         if site:
+            logger.info(f"Updating user {username} site to: {site}")
             user.site = site
             user.save(update_fields=["site"])
+            logger.info(
+                f"[DEBUG] User object after update: username={user.username}, site={user.site}"
+            )
+        else:
+            logger.info(f"No site provided for user {username}, not updating site.")
         self.user = user
         data = super().validate(attrs)
         data["user"] = {
@@ -141,6 +185,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             "is_superuser": self.user.is_superuser,
             "site": self.user.site,
         }
+        logger.info(
+            f"Login successful for user: {username}, current site: {self.user.site}"
+        )
         return data
 
 
@@ -248,8 +295,7 @@ class RegisterSerializer(serializers.Serializer):
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("Username already registered.")
-        if not value.lower().endswith("@riotinto.com"):
-            raise serializers.ValidationError("Username must end with @riotinto.com")
+        # Allow any email as username; optionally, validate as email format
         return value
 
     def validate_password(self, value):
