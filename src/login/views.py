@@ -80,37 +80,79 @@ class TrainingProgressView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        import logging
+        import json
+
+        logger = logging.getLogger("training_progress")
         popup_id = request.query_params.get("popupId")
         try:
             progress = UserTrainingProgress.objects.get(user=request.user)
-            flat_progress = progress.progress_by_popup or {}
-            # Flatten legacy data if needed
-            if any(isinstance(v, dict) for v in flat_progress.values()):
-                new_progress = {}
-                for site_data in flat_progress.values():
-                    if isinstance(site_data, dict):
-                        for pid, checked in site_data.items():
-                            new_progress[pid] = checked
-                flat_progress = new_progress
-                progress.progress_by_popup = flat_progress
-                progress.save()
+            progress_data = progress.progress_by_popup or {}
+
+            # If the data is flat (legacy: has progress fields at root), always wrap under popupId or 'unknown_popup'
+            is_flat = False
+            if isinstance(progress_data, dict):
+                flat_keys = {
+                    "gridProgressChecks",
+                    "comments",
+                    "signOffs",
+                    "progressPercentage",
+                }
+                if any(k in progress_data for k in flat_keys):
+                    is_flat = True
+
+            logger.info(
+                f"[GET] User: {request.user.username}, popupId: {popup_id}, progress_by_popup: {json.dumps(progress_data)}"
+            )
+
             if popup_id:
-                popup_data = flat_progress.get(popup_id)
+                # Always return ONLY the requested popupId as the key
+                popup_data = None
+                if is_flat:
+                    popup_data = progress_data
+                elif isinstance(progress_data, dict):
+                    popup_data = progress_data.get(popup_id)
+                logger.info(
+                    f"[GET] Lookup for popupId '{popup_id}' returned: {json.dumps(popup_data)}"
+                )
                 if popup_data is not None:
-                    return Response({"popupId": popup_id, "data": popup_data})
+                    logger.info(
+                        f"[GET] Returning: {{'{popup_id}': ...}} for user {request.user.username}"
+                    )
+                    return Response({popup_id: popup_data})
                 else:
+                    logger.warning(
+                        f"[GET] No data found for popupId '{popup_id}' for user {request.user.username}"
+                    )
                     return Response(
                         {"detail": f"No data found for popupId '{popup_id}'."},
                         status=status.HTTP_404_NOT_FOUND,
                     )
-            return Response({"progress_by_popup": flat_progress})
+
+            # If no popupId, but data is flat, do NOT return unknown_popup, just return empty or error
+            if is_flat:
+                logger.info(
+                    f"[GET] Flat/legacy data detected at root, but no popupId requested. Returning empty object."
+                )
+                return Response({})
+
+            # Normal case: return all progress as dict keyed by popupId
+            logger.info(
+                f"[GET] Returning all progress as dict keyed by popupId: {json.dumps(progress_data)}"
+            )
+            return Response(progress_data)
         except UserTrainingProgress.DoesNotExist:
+            logger.warning(f"[GET] No progress found for user {request.user.username}")
             return Response(
                 {"detail": "No progress found for user."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
     def post(self, request):
+        import logging
+        import json
+
+        logger = logging.getLogger("training_progress")
         popup_id = request.data.get("popupId")
         if not popup_id:
             return Response(
@@ -122,21 +164,29 @@ class TrainingProgressView(APIView):
         sign_offs = request.data.get("signOffs")
         progress_percentage = request.data.get("progressPercentage")
 
-        # Basic validation
+        # Only apply validation and saving for popups (not mandatory_training)
         errors = {}
-        if (
-            not isinstance(grid_progress, list)
-            or len(grid_progress) != 7
-            or any(len(row) != 6 for row in grid_progress)
-        ):
-            errors["gridProgressChecks"] = "Must be a 7x6 array of booleans."
-        if not isinstance(comments, list) or len(comments) != 7:
-            errors["comments"] = "Must be an array of 7 strings."
-        if not isinstance(sign_offs, list) or len(sign_offs) != 7:
-            errors["signOffs"] = "Must be an array of 7 objects."
+        is_popup = popup_id != "mandatory_training"
+        if is_popup:
+            if (
+                not isinstance(grid_progress, list)
+                or len(grid_progress) != 7
+                or any(len(row) != 6 for row in grid_progress)
+            ):
+                errors["gridProgressChecks"] = "Must be a 7x6 array of booleans."
+            if not isinstance(comments, list) or len(comments) != 7:
+                errors["comments"] = "Must be an array of 7 strings."
+            if not isinstance(sign_offs, list) or len(sign_offs) != 7:
+                errors["signOffs"] = "Must be an array of 7 objects."
         if errors:
+            logger.warning(f"[POST] Validation errors for {popup_id}: {errors}")
+            logger.warning(f"[POST] Incoming data: {json.dumps(request.data)}")
             return Response(
-                {"detail": "Validation error.", "errors": errors},
+                {
+                    "detail": "Validation error.",
+                    "errors": errors,
+                    "received": request.data,
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -148,11 +198,21 @@ class TrainingProgressView(APIView):
         }
 
         progress, _ = UserTrainingProgress.objects.get_or_create(user=request.user)
+        # Merge new popup data into existing dict
         progress_data = progress.progress_by_popup or {}
+        if not isinstance(progress_data, dict):
+            progress_data = {}
         progress_data[popup_id] = popup_data
         progress.progress_by_popup = progress_data
         progress.save()
-        return Response({"progress_by_popup": progress_data})
+        logger.info(
+            f"[POST] After save: progress_data for user {request.user.username}: {json.dumps(progress.progress_by_popup)}"
+        )
+        logger.info(
+            f"[POST] Returning: {{'{popup_id}': ...}} for user {request.user.username}"
+        )
+        # Always return as {popupId: {...}} (never just the fields at the root)
+        return Response({popup_id: popup_data})
 
 
 User = get_user_model()
