@@ -80,20 +80,29 @@ class TrainingProgressView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        popup_id = request.query_params.get("popupId")
         try:
             progress = UserTrainingProgress.objects.get(user=request.user)
-            # Flatten progress_by_popup to not use site
             flat_progress = progress.progress_by_popup or {}
-            # If old data exists with site keys, flatten it
+            # Flatten legacy data if needed
             if any(isinstance(v, dict) for v in flat_progress.values()):
                 new_progress = {}
                 for site_data in flat_progress.values():
                     if isinstance(site_data, dict):
-                        for popup_id, checked in site_data.items():
-                            new_progress[popup_id] = checked
+                        for pid, checked in site_data.items():
+                            new_progress[pid] = checked
                 flat_progress = new_progress
                 progress.progress_by_popup = flat_progress
                 progress.save()
+            if popup_id:
+                popup_data = flat_progress.get(popup_id)
+                if popup_data is not None:
+                    return Response({"popupId": popup_id, "data": popup_data})
+                else:
+                    return Response(
+                        {"detail": f"No data found for popupId '{popup_id}'."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
             return Response({"progress_by_popup": flat_progress})
         except UserTrainingProgress.DoesNotExist:
             return Response(
@@ -102,17 +111,45 @@ class TrainingProgressView(APIView):
             )
 
     def post(self, request):
-        popup_id = request.data.get("popup_id")
-        checked_items = request.data.get("checked_items", [])
+        popup_id = request.data.get("popupId")
         if not popup_id:
             return Response(
-                {"detail": "popup_id is required."}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": "popupId is required."}, status=status.HTTP_400_BAD_REQUEST
             )
-        progress, created = UserTrainingProgress.objects.get_or_create(
-            user=request.user
-        )
+
+        grid_progress = request.data.get("gridProgressChecks")
+        comments = request.data.get("comments")
+        sign_offs = request.data.get("signOffs")
+        progress_percentage = request.data.get("progressPercentage")
+
+        # Basic validation
+        errors = {}
+        if (
+            not isinstance(grid_progress, list)
+            or len(grid_progress) != 7
+            or any(len(row) != 6 for row in grid_progress)
+        ):
+            errors["gridProgressChecks"] = "Must be a 7x6 array of booleans."
+        if not isinstance(comments, list) or len(comments) != 7:
+            errors["comments"] = "Must be an array of 7 strings."
+        if not isinstance(sign_offs, list) or len(sign_offs) != 7:
+            errors["signOffs"] = "Must be an array of 7 objects."
+        if errors:
+            return Response(
+                {"detail": "Validation error.", "errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        popup_data = {
+            "gridProgressChecks": grid_progress,
+            "comments": comments,
+            "signOffs": sign_offs,
+            "progressPercentage": progress_percentage,
+        }
+
+        progress, _ = UserTrainingProgress.objects.get_or_create(user=request.user)
         progress_data = progress.progress_by_popup or {}
-        progress_data[popup_id] = checked_items
+        progress_data[popup_id] = popup_data
         progress.progress_by_popup = progress_data
         progress.save()
         return Response({"progress_by_popup": progress_data})
