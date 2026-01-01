@@ -129,13 +129,6 @@ class TrainingProgressView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
-            # If no popupId, but data is flat, do NOT return unknown_popup, just return empty or error
-            if is_flat:
-                logger.info(
-                    f"[GET] Flat/legacy data detected at root, but no popupId requested. Returning empty object."
-                )
-                return Response({})
-
             # Normal case: return all progress as dict keyed by popupId
             logger.info(
                 f"[GET] Returning all progress as dict keyed by popupId: {json.dumps(progress_data)}"
@@ -151,10 +144,13 @@ class TrainingProgressView(APIView):
     def post(self, request):
         import logging
         import json
+        from .serializers import UserTrainingProgressSerializer
 
         logger = logging.getLogger("training_progress")
         popup_id = request.data.get("popupId")
+        logger.info(f"[POST] Incoming data: {json.dumps(request.data)}")
         if not popup_id:
+            logger.warning("[POST] popupId is required.")
             return Response(
                 {"detail": "popupId is required."}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -171,7 +167,9 @@ class TrainingProgressView(APIView):
             if (
                 not isinstance(grid_progress, list)
                 or len(grid_progress) != 7
-                or any(len(row) != 6 for row in grid_progress)
+                or any(
+                    not isinstance(row, list) or len(row) != 6 for row in grid_progress
+                )
             ):
                 errors["gridProgressChecks"] = "Must be a 7x6 array of booleans."
             if not isinstance(comments, list) or len(comments) != 7:
@@ -190,6 +188,14 @@ class TrainingProgressView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Only save if at least one field is non-empty/non-default
+        def is_nonempty(val):
+            if isinstance(val, list):
+                return any(is_nonempty(x) for x in val)
+            if isinstance(val, dict):
+                return any(is_nonempty(x) for x in val.values())
+            return bool(val)
+
         popup_data = {
             "gridProgressChecks": grid_progress,
             "comments": comments,
@@ -197,22 +203,40 @@ class TrainingProgressView(APIView):
             "progressPercentage": progress_percentage,
         }
 
+        if not any(is_nonempty(v) for v in popup_data.values()):
+            logger.warning(
+                f"[POST] All fields empty for popupId {popup_id}, not saving."
+            )
+            return Response(
+                {"detail": "No non-empty data to save."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         progress, _ = UserTrainingProgress.objects.get_or_create(user=request.user)
-        # Merge new popup data into existing dict
         progress_data = progress.progress_by_popup or {}
         if not isinstance(progress_data, dict):
             progress_data = {}
         progress_data[popup_id] = popup_data
-        progress.progress_by_popup = progress_data
-        progress.save()
-        logger.info(
-            f"[POST] After save: progress_data for user {request.user.username}: {json.dumps(progress.progress_by_popup)}"
+
+        # Use serializer for validation and saving
+        serializer = UserTrainingProgressSerializer(
+            progress, data={"progress_by_popup": progress_data}, partial=True
         )
-        logger.info(
-            f"[POST] Returning: {{'{popup_id}': ...}} for user {request.user.username}"
-        )
-        # Always return as {popupId: {...}} (never just the fields at the root)
-        return Response({popup_id: popup_data})
+        if serializer.is_valid():
+            serializer.save()
+            logger.info(
+                f"[POST] After save: progress_data for user {request.user.username}: {json.dumps(serializer.data)}"
+            )
+            logger.info(
+                f"[POST] Returning: {{'{popup_id}': ...}} for user {request.user.username}"
+            )
+            return Response({popup_id: popup_data})
+        else:
+            logger.error(f"[POST] Serializer errors: {serializer.errors}")
+            return Response(
+                {"detail": "Serializer error.", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 User = get_user_model()
