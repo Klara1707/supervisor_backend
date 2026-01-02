@@ -183,5 +183,10 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
+        "training_progress": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }
