@@ -109,11 +109,67 @@ class TrainingProgressView(APIView):
     ]
 
     @staticmethod
-    def default_popup():
+    def get_popup_row_count(pid):
+        # DrillingPop
+        if pid == "drilling1":
+            return 5
+        elif pid == "drilling2":
+            return 12
+        elif pid == "drilling3":
+            return 8
+        # ContractorPop
+        elif pid == "contractor1":
+            return 6
+        elif pid == "contractor2":
+            return 2
+        elif pid == "contractor3":
+            return 3
+        # CostPop
+        elif pid == "cost1":
+            return 3
+        elif pid == "cost2":
+            return 2
+        elif pid == "cost3":
+            return 1
+        # FieldPop
+        elif pid == "field1":
+            return 1
+        elif pid == "field2":
+            return 5
+        elif pid == "field3":
+            return 12
+        # LeadershipPop
+        elif pid == "leadership1":
+            return 5
+        elif pid == "leadership2":
+            return 2
+        elif pid == "leadership3":
+            return 4
+        # OperationsPop
+        elif pid == "operations1":
+            return 9
+        elif pid == "operations2":
+            return 15
+        elif pid == "operations3":
+            return 4
+        # SafetyPop
+        elif pid == "safety1":
+            return 9
+        elif pid == "safety2":
+            return 9
+        elif pid == "safety3":
+            return 2
+        # Default for other popups
+        else:
+            return 7
+
+    @staticmethod
+    def default_popup(level=None):
+        row_count = TrainingProgressView.get_popup_row_count(level)
         return {
-            "gridProgressChecks": [[False] * 6 for _ in range(7)],
-            "comments": ["" for _ in range(7)],
-            "signOffs": [{} for _ in range(7)],
+            "gridProgressChecks": [[False] * 6 for _ in range(row_count)],
+            "comments": ["" for _ in range(row_count)],
+            "signOffs": [{} for _ in range(row_count)],
             "progressPercentage": 0.0,
         }
 
@@ -144,27 +200,32 @@ class TrainingProgressView(APIView):
                 if pid == "mandatory_training":
                     flat_progress[pid] = self.pad_mandatory(val)
                 else:
+                    row_count = self.get_popup_row_count(pid)
                     if val is None or not isinstance(val, dict):
-                        flat_progress[pid] = self.default_popup()
+                        flat_progress[pid] = self.default_popup(pid)
                     else:
                         popup = dict(val)
                         grid = popup.get("gridProgressChecks")
                         if not (
                             isinstance(grid, list)
-                            and len(grid) == 7
+                            and len(grid) == row_count
                             and all(
                                 isinstance(row, list) and len(row) == 6 for row in grid
                             )
                         ):
                             popup["gridProgressChecks"] = [
-                                [False] * 6 for _ in range(7)
+                                [False] * 6 for _ in range(row_count)
                             ]
                         comments = popup.get("comments")
-                        if not (isinstance(comments, list) and len(comments) == 7):
-                            popup["comments"] = ["" for _ in range(7)]
+                        if not (
+                            isinstance(comments, list) and len(comments) == row_count
+                        ):
+                            popup["comments"] = ["" for _ in range(row_count)]
                         signoffs = popup.get("signOffs")
-                        if not (isinstance(signoffs, list) and len(signoffs) == 7):
-                            popup["signOffs"] = [{} for _ in range(7)]
+                        if not (
+                            isinstance(signoffs, list) and len(signoffs) == row_count
+                        ):
+                            popup["signOffs"] = [{} for _ in range(row_count)]
                         if "progressPercentage" not in popup:
                             popup["progressPercentage"] = 0.0
                         flat_progress[pid] = popup
@@ -234,6 +295,8 @@ class TrainingProgressView(APIView):
         if not isinstance(progress_data, dict):
             progress_data = {}
 
+        # Determine row count for validation
+        row_count = self.get_popup_row_count(popup_id)
         if popup_id == "mandatory_training":
             # Accept a flat array of 59 items (objects or booleans)
             if (
@@ -260,17 +323,19 @@ class TrainingProgressView(APIView):
             if is_popup:
                 if (
                     not isinstance(grid_progress, list)
-                    or len(grid_progress) != 7
+                    or len(grid_progress) != row_count
                     or any(
                         not isinstance(row, list) or len(row) != 6
                         for row in grid_progress
                     )
                 ):
-                    errors["gridProgressChecks"] = "Must be a 7x6 array of booleans."
-                if not isinstance(comments, list) or len(comments) != 7:
-                    errors["comments"] = "Must be an array of 7 strings."
-                if not isinstance(sign_offs, list) or len(sign_offs) != 7:
-                    errors["signOffs"] = "Must be an array of 7 objects."
+                    errors["gridProgressChecks"] = (
+                        f"Must be a {row_count}x6 array of booleans."
+                    )
+                if not isinstance(comments, list) or len(comments) != row_count:
+                    errors["comments"] = f"Must be an array of {row_count} strings."
+                if not isinstance(sign_offs, list) or len(sign_offs) != row_count:
+                    errors["signOffs"] = f"Must be an array of {row_count} objects."
             if errors:
                 logger.warning(f"[POST] Validation errors for {popup_id}: {errors}")
                 logger.warning(f"[POST] Incoming data: {json.dumps(request.data)}")
@@ -344,6 +409,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         logger = logging.getLogger("login")
         username = attrs.get("username")
+        if username:
+            username = username.strip().lower()
         password = attrs.get("password")
         site = attrs.get("site")
         # Log the raw request body for debugging
