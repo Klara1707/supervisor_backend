@@ -112,11 +112,11 @@ class TrainingProgressView(APIView):
     def get_popup_row_count(pid):
         # DrillingPop
         if pid == "drilling1":
-            return 5
-        elif pid == "drilling2":
-            return 12
-        elif pid == "drilling3":
             return 8
+        elif pid == "drilling2":
+            return 15
+        elif pid == "drilling3":
+            return 9
         # ContractorPop
         elif pid == "contractor1":
             return 6
@@ -128,9 +128,9 @@ class TrainingProgressView(APIView):
         elif pid == "cost1":
             return 3
         elif pid == "cost2":
-            return 2
+            return 4
         elif pid == "cost3":
-            return 1
+            return 2
         # FieldPop
         elif pid == "field1":
             return 1
@@ -154,11 +154,11 @@ class TrainingProgressView(APIView):
             return 4
         # SafetyPop
         elif pid == "safety1":
-            return 9
+            return 8
         elif pid == "safety2":
-            return 9
+            return 8
         elif pid == "safety3":
-            return 2
+            return 8
         # Default for other popups
         else:
             return 7
@@ -166,8 +166,36 @@ class TrainingProgressView(APIView):
     @staticmethod
     def default_popup(level=None):
         row_count = TrainingProgressView.get_popup_row_count(level)
+        # For popups where column 6 is removed, only 5 columns
+        popups_with_removed_col6 = {
+            "safety1",
+            "safety2",
+            "safety3",
+            "drilling1",
+            "drilling2",
+            "drilling3",
+            "leadership1",
+            "leadership2",
+            "leadership3",
+            "operations1",
+            "operations2",
+            "operations3",
+            "earthworks1",
+            "earthworks2",
+            "earthworks3",
+            "cost1",
+            "cost2",
+            "cost3",
+            "contractor1",
+            "contractor2",
+            "contractor3",
+            "field1",
+            "field2",
+            "field3",
+        }
+        col_count = 5 if level in popups_with_removed_col6 else 6
         return {
-            "gridProgressChecks": [[False] * 6 for _ in range(row_count)],
+            "gridProgressChecks": [[False] * col_count for _ in range(row_count)],
             "comments": ["" for _ in range(row_count)],
             "signOffs": [{} for _ in range(row_count)],
             "progressPercentage": 0.0,
@@ -206,15 +234,44 @@ class TrainingProgressView(APIView):
                     else:
                         popup = dict(val)
                         grid = popup.get("gridProgressChecks")
+                        # Remove/ignore column 6 for affected popups
+                        popups_with_removed_col6 = {
+                            "safety1",
+                            "safety2",
+                            "safety3",
+                            "drilling1",
+                            "drilling2",
+                            "drilling3",
+                            "leadership1",
+                            "leadership2",
+                            "leadership3",
+                            "operations1",
+                            "operations2",
+                            "operations3",
+                            "earthworks1",
+                            "earthworks2",
+                            "earthworks3",
+                            "cost1",
+                            "cost2",
+                            "cost3",
+                            "contractor1",
+                            "contractor2",
+                            "contractor3",
+                            "field1",
+                            "field2",
+                            "field3",
+                        }
+                        col_count = 5 if pid in popups_with_removed_col6 else 6
                         if not (
                             isinstance(grid, list)
                             and len(grid) == row_count
                             and all(
-                                isinstance(row, list) and len(row) == 6 for row in grid
+                                isinstance(row, list) and len(row) == col_count
+                                for row in grid
                             )
                         ):
                             popup["gridProgressChecks"] = [
-                                [False] * 6 for _ in range(row_count)
+                                [False] * col_count for _ in range(row_count)
                             ]
                         comments = popup.get("comments")
                         if not (
@@ -321,16 +378,43 @@ class TrainingProgressView(APIView):
         else:
             # Original popup logic
             if is_popup:
+                popups_with_removed_col6 = {
+                    "safety1",
+                    "safety2",
+                    "safety3",
+                    "drilling1",
+                    "drilling2",
+                    "drilling3",
+                    "leadership1",
+                    "leadership2",
+                    "leadership3",
+                    "operations1",
+                    "operations2",
+                    "operations3",
+                    "earthworks1",
+                    "earthworks2",
+                    "earthworks3",
+                    "cost1",
+                    "cost2",
+                    "cost3",
+                    "contractor1",
+                    "contractor2",
+                    "contractor3",
+                    "field1",
+                    "field2",
+                    "field3",
+                }
+                col_count = 5 if popup_id in popups_with_removed_col6 else 6
                 if (
                     not isinstance(grid_progress, list)
                     or len(grid_progress) != row_count
                     or any(
-                        not isinstance(row, list) or len(row) != 6
+                        not isinstance(row, list) or len(row) != col_count
                         for row in grid_progress
                     )
                 ):
                     errors["gridProgressChecks"] = (
-                        f"Must be a {row_count}x6 array of booleans."
+                        f"Must be a {row_count}x{col_count} array of booleans."
                     )
                 if not isinstance(comments, list) or len(comments) != row_count:
                     errors["comments"] = f"Must be an array of {row_count} strings."
