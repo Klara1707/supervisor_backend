@@ -1,3 +1,5 @@
+# Allow cookies/sessions with CORS
+CORS_ALLOW_CREDENTIALS = True
 """
 Django settings for project_name project.
 
@@ -60,8 +62,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -72,8 +74,12 @@ MIDDLEWARE = [
 ]
 # Basic REST Framework config
 
-# CORS settings for development
-CORS_ALLOW_ALL_ORIGINS = True
+
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    "https://supervisortrainingportal.netlify.app",
+]
 
 
 # Basic REST Framework config
