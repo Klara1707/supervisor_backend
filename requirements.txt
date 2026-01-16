@@ -9,9 +9,7 @@ gunicorn==23.0.0
 packaging==25.0
 PyJWT==2.10.1
 six==1.17.0
-spark-parser==1.9.0
 sqlparse==0.5.3
 tzdata==2025.2
-uncompyle6==3.9.3
 whitenoise==6.11.0
-xdis==6.1.8
+
