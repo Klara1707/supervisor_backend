@@ -1,3 +1,8 @@
+# CSRF trusted origins for Heroku and Netlify
+CSRF_TRUSTED_ORIGINS = [
+    "https://supervisor-training-platform-fdd972efb12b.herokuapp.com",
+    "https://supervisortrainingportal.netlify.app",
+]
 # Allow cookies/sessions with CORS
 CORS_ALLOW_CREDENTIALS = True
 """
