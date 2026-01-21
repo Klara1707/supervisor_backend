@@ -83,7 +83,7 @@ MIDDLEWARE = [
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
-    "https://supervisortrainingportal.netlify.app",
+    "http://localhost:5173",
 ]
 
 
