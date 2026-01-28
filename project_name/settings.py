@@ -1,3 +1,7 @@
+import os
+from pathlib import Path
+from datetime import timedelta
+
 # CSRF trusted origins for Heroku and Netlify
 CSRF_TRUSTED_ORIGINS = [
     "https://supervisor-training-platform-fdd972efb12b.herokuapp.com",
@@ -16,10 +20,6 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
-
-import os
-from pathlib import Path
-from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -48,7 +48,9 @@ EMAIL_HOST = "smtp.gmail.com"  # Gmail SMTP server
 EMAIL_PORT = 587  # 587 for TLS, 465 for SSL
 EMAIL_USE_TLS = True  # True for TLS, False for SSL
 EMAIL_HOST_USER = "superteamresdev@gmail.com"  # Your email address
-EMAIL_HOST_PASSWORD = "jttntpbiqqcqracw"  # Your email password or app password
+EMAIL_HOST_PASSWORD = os.environ.get(
+    "EMAIL_HOST_PASSWORD"
+)  # Your email password or app password (set in Heroku Config Vars)
 DEFAULT_FROM_EMAIL = "superteamresdev@gmail.com"  # Sender shown in emails
 
 # Application definition
