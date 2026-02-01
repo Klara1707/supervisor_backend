@@ -95,27 +95,8 @@ else:
 
 # Basic REST Framework config
 
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.exceptions import AuthenticationFailed
-import logging
-
-
-class LoggingJWTAuthentication(JWTAuthentication):
-    def authenticate(self, request):
-        try:
-            return super().authenticate(request)
-        except AuthenticationFailed as exc:
-            logger = logging.getLogger("login")
-            logger.error(
-                f"JWT authentication failed: {exc} (auth header: {request.headers.get('Authorization')})"
-            )
-            raise
-
-
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "project_name.settings.LoggingJWTAuthentication",
-    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": ("src.login.auth.LoggingJWTAuthentication",),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }
 
