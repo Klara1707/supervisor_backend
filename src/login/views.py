@@ -553,6 +553,13 @@ class UsersBySiteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        import logging
+
+        logger = logging.getLogger("training_progress")
+        logger.info(
+            f"[DEBUG] Authenticated user: {request.user} (is_authenticated={request.user.is_authenticated}, is_active={getattr(request.user, 'is_active', None)})"
+        )
+        logger.info(f"[DEBUG] Request auth: {request.auth}")
         # Only include normal users (not admin/superuser)
         users = User.objects.filter(is_superuser=False, is_staff=False)
         result = {}
