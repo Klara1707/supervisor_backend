@@ -84,13 +84,12 @@ MIDDLEWARE = [
 
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = False
-cors_env = os.environ.get("CORS_ALLOWED_ORIGINS")
-if cors_env:
-    CORS_ALLOWED_ORIGINS = [
-        x.strip().rstrip("/") for x in cors_env.split(",") if x.strip()
-    ]
-else:
-    CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
+
+# Always allow localhost and Netlify frontend
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "https://supervisortrainingportal.netlify.app",
+]
 
 
 # Basic REST Framework config
